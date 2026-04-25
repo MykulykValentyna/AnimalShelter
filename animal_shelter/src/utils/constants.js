@@ -7,6 +7,7 @@ export const ROUTES = {
   LOGIN: "/login",
   REGISTER: "/register",
   ANIMALS: "/animals",
+  ANIMAL_DETAIL: "/animals/:id",
   FEED: "/feed",
   MAP: "/map",
   PROFILE: "/profile",

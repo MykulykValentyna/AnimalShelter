@@ -1,287 +1,277 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../utils/constants';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Navbar = () => {
   const location = useLocation();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
+  const navigate = useNavigate();
+  const { currentUser, register, login, logout, checkLoginExists, checkEmailExists } = useAuth(); 
 
-  // Стан для багатокрокової реєстрації
-  const [authStep, setAuthStep] = useState(1); // 1: Форма, 2: Документи, 3: Дія, 4: Результат
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('login'); 
+  const [errorMsg, setErrorMsg] = useState('');
+  const [showProfileMenu, setShowProfileMenu] = useState(false); 
+
+  const [showLoginPwd, setShowLoginPwd] = useState(false);
+  const [showRegPwd, setShowRegPwd] = useState(false);
+  const [showRegConfirmPwd, setShowRegConfirmPwd] = useState(false);
+
+  const [authStep, setAuthStep] = useState(1);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState(null); // 'success' або 'error'
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [uploadedFileName, setUploadedFileName] = useState('');
 
   const [formData, setFormData] = useState({
-    name: '',
-    login: '',
-    email: '',
-    password: '',
-    role: 'user' // user, volunteer, shelter, vet
+    name: '', login: '', email: '', password: '', confirmPassword: '', role: 'user'
   });
-  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [loginData, setLoginData] = useState({ identifier: '', password: '' });
 
   const isActive = (path) => location.pathname === path;
 
-  // Обробка вводу форми
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const inputStyle = "w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-rose-300 outline-none text-sm text-gray-900 shadow-[inset_0_0_0px_1000px_#f9fafb] [-webkit-text-fill-color:#111827] transition-all pr-12";
+
+  useEffect(() => {
+    if (isModalOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isModalOpen]);
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setErrorMsg('');
+    setAuthStep(1);
+    setLoginData({ identifier: '', password: '' });
+    setFormData({ name: '', login: '', email: '', password: '', confirmPassword: '', role: 'user' });
+    setUploadedFileName('');
+    setShowLoginPwd(false);
+    setShowRegPwd(false);
+    setShowRegConfirmPwd(false);
   };
 
-  // Перехід між кроками
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setErrorMsg('');
+    setAuthStep(1);
+    setLoginData({ identifier: '', password: '' });
+    setFormData({ name: '', login: '', email: '', password: '', confirmPassword: '', role: 'user' });
+    setShowLoginPwd(false);
+    setShowRegPwd(false);
+    setShowRegConfirmPwd(false);
+  };
+
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+    const result = login(loginData.identifier, loginData.password);
+    if (result.success) {
+      handleCloseModal(); 
+      navigate(ROUTES.PROFILE); 
+    } else setErrorMsg(result.message);
+  };
+
+  const handleChange = (e) => { setFormData({ ...formData, [e.target.name]: e.target.value }); setErrorMsg(''); };
+
+  const handleLoginChange = (e) => {
+    const value = e.target.value;
+    if (value === '' || /^[a-zA-Z0-9_]+$/.test(value)) {
+      setFormData({ ...formData, login: value.toLowerCase() }); 
+      setErrorMsg('');
+    } else setErrorMsg('Логін може містити лише англійські літери, цифри та "_"');
+  };
+
   const handleNextStep = (e) => {
     e.preventDefault();
     if (authStep === 1) {
-      if (formData.role === 'user') {
-        setAuthStep(3); // Звичайний користувач пропускає документи
-      } else {
-        setAuthStep(2); // Інші ролі завантажують документи
-      }
-    } else if (authStep === 2) {
-      setAuthStep(3); // Після документів йдемо в Дію
-    }
+      if (checkLoginExists(formData.login)) return setErrorMsg('Цей логін вже зайнятий. Будь ласка, оберіть інший!');
+      if (checkEmailExists(formData.email)) return setErrorMsg('Користувач із цією поштою вже зареєстрований!');
+      if (formData.password !== formData.confirmPassword) return setErrorMsg('Паролі не збігаються! Перевірте введені дані.');
+      formData.role === 'user' ? setAuthStep(3) : setAuthStep(2);
+    } else if (authStep === 2) setAuthStep(3);
   };
 
-  // Завантаження документа
-  const handleFileUpload = (e) => {
-    if (e.target.files[0]) {
-      setUploadedFileName(e.target.files[0].name);
-    }
-  };
-
-  // Імітація перевірки через Дію
   const handleDijaVerification = () => {
     setIsVerifying(true);
-    
-    // Імітація затримки мережі та перевірки (3 секунди)
-    setTimeout(() => {
-      setIsVerifying(false);
-      // У 90% випадків успіх, у 10% - помилка (для реалістичності)
-      const isSuccess = Math.random() > 0.1; 
-      setVerificationResult(isSuccess ? 'success' : 'error');
-      setAuthStep(4);
-    }, 3000);
+    setTimeout(() => { setIsVerifying(false); setVerificationResult('success'); setAuthStep(4); }, 2000);
   };
 
-  // Фіналізація входу
-  const handleFinishLogin = () => {
-    setIsLoggedIn(true);
-    setCurrentUser({ name: formData.name || 'Валентина', role: formData.role });
-    setIsModalOpen(false);
-    // Скидаємо стан для наступних відкриттів
-    setTimeout(() => {
-      setAuthStep(1);
-      setVerificationResult(null);
-      setFormData({ name: '', login: '', email: '', password: '', role: 'user' });
-      setUploadedFileName('');
-    }, 500);
+  const handleFinishRegister = () => {
+    const result = register(formData);
+    if (result.success) { handleCloseModal(); navigate(ROUTES.PROFILE); } 
+    else { setAuthStep(1); setErrorMsg(result.message); }
   };
+
+  const EyeIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>;
+  const EyeOffIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>;
 
   return (
     <>
       <header className="bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-rose-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-          
           <Link to={ROUTES.HOME} className="flex items-center gap-2 group">
-            <span className="text-2xl text-rose-500 group-hover:scale-110 transition-transform duration-300">🌸</span>
+            <span className="text-2xl text-rose-500 group-hover:scale-110 transition-transform">🌸</span>
             <span className="text-xl font-black text-rose-500 tracking-tight">AnimalShelter</span>
           </Link>
 
+          {/* Видалили лінку на Чати звідси */}
           <div className="hidden md:flex items-center gap-8">
-            <Link to={ROUTES.ANIMALS} className={`font-bold text-sm transition-colors ${isActive(ROUTES.ANIMALS) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Знайти друга</Link>
-            <Link to={ROUTES.FEED} className={`font-bold text-sm transition-colors ${isActive(ROUTES.FEED) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Стрічка допомоги</Link>
-            <Link to={ROUTES.MAP} className={`font-bold text-sm transition-colors ${isActive(ROUTES.MAP) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Карта</Link>
-            <Link to={ROUTES.MESSAGES} className={`font-bold text-sm transition-colors ${isActive(ROUTES.MESSAGES) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Чати</Link>
+            <Link to={ROUTES.ANIMALS} className={`font-bold text-sm ${isActive(ROUTES.ANIMALS) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Знайти друга</Link>
+            <Link to={ROUTES.FEED} className={`font-bold text-sm ${isActive(ROUTES.FEED) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Стрічка допомоги</Link>
+            <Link to={ROUTES.MAP} className={`font-bold text-sm ${isActive(ROUTES.MAP) ? 'text-rose-500' : 'text-gray-600 hover:text-rose-500'}`}>Карта</Link>
           </div>
 
           <div>
-            {!isLoggedIn ? (
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="px-6 py-2.5 bg-gradient-to-r from-rose-500 to-purple-600 text-white font-bold rounded-full shadow-md hover:shadow-lg hover:scale-105 transition-all duration-300 text-sm flex items-center gap-2"
-              >
-                Реєстрація / Вхід
+            {!currentUser ? (
+              <button onClick={() => { setIsModalOpen(true); setActiveTab('login'); }} className="px-6 py-2.5 bg-gradient-to-r from-rose-500 to-purple-600 text-white font-bold rounded-full shadow-md hover:scale-105 transition-all text-sm">
+                Увійти
               </button>
             ) : (
-              // ОСЬ ЦЯ ЧАСТИНА ЗМІНЕНА: Тепер це Link на ROUTES.PROFILE
-              <Link 
-                to={ROUTES.PROFILE}
-                className="flex items-center gap-3 cursor-pointer group p-1.5 pr-4 bg-rose-50 rounded-full border border-rose-100 transition-all hover:bg-rose-100 hover:shadow-sm"
-              >
-                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-400 to-purple-500 flex items-center justify-center shadow-sm text-sm border-2 border-white text-white font-bold uppercase">
-                   {currentUser?.name.charAt(0)}
-                 </div>
-                 <div className="flex flex-col">
-                   <span className="font-bold text-sm text-gray-800 leading-none group-hover:text-rose-600 transition-colors">{currentUser?.name}</span>
-                   <span className="text-[10px] text-gray-500 uppercase font-bold mt-0.5">
-                     {currentUser?.role === 'vet' ? 'Ветклініка' : currentUser?.role === 'shelter' ? 'Організація' : currentUser?.role === 'volunteer' ? 'Волонтер' : 'Користувач'}
-                   </span>
-                 </div>
-              </Link>
+              <div className="relative">
+                <div onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-3 cursor-pointer group p-1.5 pr-4 bg-rose-50 rounded-full border border-rose-100 transition-all hover:bg-rose-100">
+                   <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-400 to-purple-500 flex items-center justify-center shadow-sm text-sm border-2 border-white text-white font-bold uppercase overflow-hidden">
+                     {currentUser.avatar ? (
+                        <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        currentUser.name.charAt(0)
+                      )}
+                   </div>
+                   <div className="flex flex-col">
+                     <span className="font-bold text-sm text-gray-800 leading-none">{currentUser.name}</span>
+                   </div>
+                </div>
+
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-3 w-48 bg-white rounded-2xl shadow-xl border border-rose-100 py-2 animate-fade-in z-50">
+                    <Link to={ROUTES.PROFILE} onClick={() => setShowProfileMenu(false)} className="block px-5 py-3 text-sm font-bold text-gray-700 hover:bg-rose-50 hover:text-rose-600 transition-colors">
+                      👤 Мій профіль
+                    </Link>
+                    <div className="border-t border-rose-50 my-1"></div>
+                    <button onClick={() => { logout(); setShowProfileMenu(false); navigate(ROUTES.HOME); }} className="w-full text-left px-5 py-3 text-sm font-bold text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors">
+                      Вийти з акаунта
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-
         </div>
       </header>
 
-      {/* Модальне вікно Реєстрації */}
+      {/* Модальне вікно (Без змін) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[2.5rem] shadow-2xl relative border border-gray-100">
-            
-            <button 
-              onClick={() => setIsModalOpen(false)} 
-              className="absolute top-5 right-5 p-2 text-gray-400 hover:text-rose-500 bg-gray-50 hover:bg-rose-50 rounded-full transition-colors z-20"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar rounded-[2rem] shadow-2xl relative border border-gray-100 p-8">
+            <button onClick={handleCloseModal} className="absolute top-5 right-5 p-2 text-gray-400 hover:text-rose-500 bg-gray-50 rounded-full z-20 transition-colors">✕</button>
 
-            <div className="p-8 relative">
-              {/* Прогрес бар */}
-              <div className="flex gap-1 mb-8">
-                {[1, 2, 3].map(step => (
-                  <div key={step} className={`h-1.5 flex-1 rounded-full transition-colors ${authStep >= step ? 'bg-rose-500' : 'bg-gray-100'}`}></div>
-                ))}
+            {authStep === 1 && (
+              <div className="flex bg-gray-50 p-1 rounded-2xl mb-6">
+                <button type="button" onClick={() => switchTab('login')} className={`flex-1 py-2.5 font-bold text-sm rounded-xl transition-all ${activeTab === 'login' ? 'bg-white shadow-sm text-rose-500' : 'text-gray-500 hover:text-gray-900'}`}>Вхід</button>
+                <button type="button" onClick={() => switchTab('register')} className={`flex-1 py-2.5 font-bold text-sm rounded-xl transition-all ${activeTab === 'register' ? 'bg-white shadow-sm text-rose-500' : 'text-gray-500 hover:text-gray-900'}`}>Реєстрація</button>
               </div>
+            )}
 
-              {/* КРОК 1: Основні дані */}
-              {authStep === 1 && (
-                <form onSubmit={handleNextStep} className="space-y-5 animate-slide-up">
-                  <div className="text-center mb-6">
-                    <h2 className="text-2xl font-black text-gray-900">Створення профілю</h2>
-                    <p className="text-gray-500 text-sm mt-1">Заповніть дані для реєстрації на платформі</p>
-                  </div>
+            {errorMsg && <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 text-sm font-bold rounded-xl text-center animate-slide-up">{errorMsg}</div>}
 
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 ml-2 uppercase">Хто ви?</label>
-                    <select 
-                      name="role" 
-                      value={formData.role} 
-                      onChange={handleChange}
-                      className="w-full mt-1 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-rose-300 outline-none font-bold text-gray-800 cursor-pointer"
-                    >
-                      <option value="user">Користувач (Шукаю друга)</option>
-                      <option value="volunteer">Волонтер</option>
-                      <option value="shelter">Організація / Притулок</option>
-                      <option value="vet">Ветеринарна клініка</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <input type="text" name="name" required value={formData.name} onChange={handleChange} placeholder="Повне ім'я або Назва організації" className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-purple-300 outline-none transition-shadow" />
-                  </div>
-                  <div>
-                    <input type="text" name="login" required value={formData.login} onChange={handleChange} placeholder="Логін (Username)" className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-purple-300 outline-none transition-shadow" />
-                  </div>
-                  <div>
-                    <input type="email" name="email" required value={formData.email} onChange={handleChange} placeholder="Пошта (Email)" className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-purple-300 outline-none transition-shadow" />
-                  </div>
-                  <div>
-                    <input type="password" name="password" required value={formData.password} onChange={handleChange} placeholder="Пароль" className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-purple-300 outline-none transition-shadow" />
-                  </div>
-
-                  <button type="submit" className="w-full py-4 bg-gradient-to-r from-rose-500 to-purple-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-xl hover:scale-[1.02] transition-all active:scale-95 mt-4">
-                    Далі &rarr;
-                  </button>
-                </form>
-              )}
-
-              {/* КРОК 2: Завантаження документів (Тільки для спец. ролей) */}
-              {authStep === 2 && (
-                <div className="space-y-6 animate-slide-up text-center">
-                  <h2 className="text-2xl font-black text-gray-900">Підтвердження статусу</h2>
-                  <p className="text-gray-500 text-sm">Оскільки ви реєструєтесь як <strong>{formData.role === 'vet' ? 'Ветклініка' : 'Організація/Волонтер'}</strong>, завантажте скан-копії установчих документів або довідок.</p>
-                  
-                  <label className="border-2 border-dashed border-rose-200 bg-rose-50/50 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-rose-50 transition-colors group">
-                    <span className="text-4xl mb-3 group-hover:scale-110 transition-transform">📁</span>
-                    <span className="text-sm font-bold text-gray-700">{uploadedFileName || 'Натисніть для завантаження файлу'}</span>
-                    <span className="text-xs text-gray-400 mt-1">PDF, JPG, PNG до 10MB</span>
-                    <input type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png" />
-                  </label>
-
-                  <button 
-                    onClick={handleNextStep}
-                    disabled={!uploadedFileName} 
-                    className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl shadow-lg hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-95"
-                  >
-                    Перевірити документи
-                  </button>
+            {activeTab === 'login' && authStep === 1 && (
+              <form onSubmit={handleLoginSubmit} autoComplete="off" className="space-y-4 animate-fade-in">
+                <div style={{ display: 'none' }}><input type="text" name="hidden_login" autoComplete="username" /><input type="password" name="hidden_password" autoComplete="current-password" /></div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Пошта або логін</label>
+                  <input type="text" name="identifier" required value={loginData.identifier} onChange={(e) => { setLoginData({...loginData, identifier: e.target.value}); setErrorMsg(''); }} placeholder="" autoComplete="off" className={inputStyle} />
                 </div>
-              )}
-
-              {/* КРОК 3: Перевірка через Дію */}
-              {authStep === 3 && (
-                <div className="text-center animate-slide-up">
-                  <div className="w-20 h-20 bg-black text-white rounded-3xl flex items-center justify-center text-3xl font-black mx-auto mb-6 shadow-xl">
-                    Дія
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Пароль</label>
+                  <div className="relative">
+                    <input type={showLoginPwd ? "text" : "password"} name="password" required value={loginData.password} onChange={(e) => { setLoginData({...loginData, password: e.target.value}); setErrorMsg(''); }} placeholder="" autoComplete="new-password" className={inputStyle} />
+                    <button type="button" onClick={() => setShowLoginPwd(!showLoginPwd)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-rose-500 focus:outline-none transition-colors">{showLoginPwd ? <EyeOffIcon /> : <EyeIcon />}</button>
                   </div>
-                  <h2 className="text-2xl font-black text-gray-900 mb-2">Верифікація особи</h2>
-                  <p className="text-gray-500 text-sm mb-8 px-4">
-                    Для безпеки тварин ми просимо підтвердити особу через державний реєстр.
-                  </p>
+                </div>
+                <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl shadow-lg hover:bg-gray-800 transition-all active:scale-95 mt-6">Увійти</button>
+              </form>
+            )}
 
-                  {isVerifying ? (
-                    <div className="flex flex-col items-center justify-center py-8">
-                      <div className="w-16 h-16 border-4 border-gray-100 border-t-black rounded-full animate-spin mb-4"></div>
-                      <p className="font-bold text-gray-800 animate-pulse">Отримання даних з реєстру...</p>
+            {activeTab === 'register' && (
+              <>
+                <div className="flex gap-1 mb-6">
+                  {[1, 2, 3].map(step => (<div key={step} className={`h-1.5 flex-1 rounded-full transition-colors ${authStep >= step ? 'bg-rose-500' : 'bg-gray-100'}`}></div>))}
+                </div>
+
+                {authStep === 1 && (
+                  <form onSubmit={handleNextStep} autoComplete="off" className="animate-slide-up">
+                    <div style={{ display: 'none' }}><input type="email" name="hidden_email" autoComplete="email" /><input type="password" name="hidden_password" autoComplete="new-password" /></div>
+                    <div className="mb-4">
+                      <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase tracking-wider">Роль на платформі</label>
+                      <select name="role" value={formData.role} onChange={handleChange} className={inputStyle + " cursor-pointer font-bold"}>
+                        <option value="user">Користувач (Шукаю друга)</option>
+                        <option value="volunteer">Волонтер</option>
+                        <option value="shelter">Організація / Притулок</option>
+                      </select>
                     </div>
-                  ) : (
-                    <button 
-                      onClick={handleDijaVerification} 
-                      className="w-full py-4 bg-black text-white font-bold text-lg rounded-2xl hover:bg-gray-800 transition-all shadow-xl hover:shadow-2xl active:scale-95 flex items-center justify-center gap-2 group hover:scale-[1.02]"
-                    >
-                      <svg className="w-5 h-5 group-hover:rotate-12 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-                      </svg>
-                      Пройти перевірку (Дія.Підпис)
-                    </button>
-                  )}
-                </div>
-              )}
 
-              {/* КРОК 4: Результат перевірки */}
-              {authStep === 4 && (
-                <div className="text-center animate-fade-in">
-                  {verificationResult === 'success' ? (
-                    <>
-                      <div className="w-24 h-24 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6 shadow-inner animate-[bounce_1s_ease-in-out_1]">
-                        ✓
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Ім'я / Назва</label>
+                        <input type="text" name="name" required value={formData.name} onChange={handleChange} placeholder="" autoComplete="off" className={inputStyle} />
                       </div>
-                      <h2 className="text-2xl font-black text-gray-900 mb-2">Особу підтверджено!</h2>
-                      <p className="text-gray-500 text-sm mb-8">
-                        Реєстрація успішно завершена. Ваші дані перевірено, тепер ви маєте повний доступ до платформи.
-                      </p>
-                      <button 
-                        onClick={handleFinishLogin} 
-                        className="w-full py-4 bg-gradient-to-r from-emerald-400 to-emerald-500 text-white font-bold text-lg rounded-2xl shadow-lg shadow-emerald-200 hover:shadow-xl hover:scale-[1.02] transition-all active:scale-95"
-                      >
-                        Увійти в профіль
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-24 h-24 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6 shadow-inner animate-pulse">
-                        ✕
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Унікальний логін</label>
+                        <input type="text" name="login" required value={formData.login} onChange={handleLoginChange} placeholder="" autoComplete="off" className={inputStyle} />
                       </div>
-                      <h2 className="text-2xl font-black text-gray-900 mb-2">Помилка верифікації</h2>
-                      <p className="text-gray-500 text-sm mb-8">
-                        Дані не збігаються або запит було відхилено. Будь ласка, перевірте правильність введених даних і спробуйте ще раз.
-                      </p>
-                      <button 
-                        onClick={() => setAuthStep(1)} 
-                        className="w-full py-4 bg-gray-100 text-gray-900 font-bold text-lg rounded-2xl hover:bg-gray-200 transition-all active:scale-95 hover:scale-[1.02]"
-                      >
-                        Спробувати знову
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Email</label>
+                        <input type="email" name="email" required value={formData.email} onChange={handleChange} placeholder="" autoComplete="off" className={inputStyle} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Пароль</label>
+                        <div className="relative">
+                          <input type={showRegPwd ? "text" : "password"} name="password" required value={formData.password} onChange={handleChange} placeholder="" autoComplete="new-password" className={inputStyle} />
+                          <button type="button" onClick={() => setShowRegPwd(!showRegPwd)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-rose-500 focus:outline-none transition-colors">{showRegPwd ? <EyeOffIcon /> : <EyeIcon />}</button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-1 ml-1">Повторіть пароль</label>
+                        <div className="relative">
+                          <input type={showRegConfirmPwd ? "text" : "password"} name="confirmPassword" required value={formData.confirmPassword} onChange={handleChange} placeholder="" autoComplete="new-password" className={inputStyle} />
+                          <button type="button" onClick={() => setShowRegConfirmPwd(!showRegConfirmPwd)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-rose-500 focus:outline-none transition-colors">{showRegConfirmPwd ? <EyeOffIcon /> : <EyeIcon />}</button>
+                        </div>
+                      </div>
+                    </div>
+                    <button type="submit" className="w-full py-4 bg-gradient-to-r from-rose-500 to-purple-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:scale-[1.02] active:scale-95 transition-all">Продовжити &rarr;</button>
+                  </form>
+                )}
 
-            </div>
+                {authStep === 2 && (
+                  <div className="text-center animate-slide-up">
+                    <h2 className="text-xl font-black mb-4">Документи</h2>
+                    <label className="border-2 border-dashed border-rose-200 bg-rose-50 rounded-3xl p-6 flex flex-col items-center cursor-pointer hover:bg-rose-100 transition-colors">
+                      <span className="text-3xl mb-2">📁</span>
+                      <span className="text-sm font-bold text-gray-700">{uploadedFileName || 'Завантажити файл'}</span>
+                      <input type="file" className="hidden" onChange={(e) => e.target.files[0] && setUploadedFileName(e.target.files[0].name)} />
+                    </label>
+                    <button onClick={handleNextStep} disabled={!uploadedFileName} className="w-full py-4 mt-6 bg-gray-900 text-white font-bold rounded-2xl disabled:opacity-50 transition-all hover:bg-gray-800">Далі</button>
+                  </div>
+                )}
+
+                {authStep === 3 && (
+                  <div className="text-center animate-slide-up">
+                    <div className="w-16 h-16 bg-black text-white rounded-2xl flex items-center justify-center text-2xl font-black mx-auto mb-4 shadow-xl">Дія</div>
+                    <h2 className="text-xl font-black mb-6">Верифікація</h2>
+                    {isVerifying ? (
+                      <div className="py-4"><div className="w-10 h-10 border-4 border-gray-200 border-t-black rounded-full animate-spin mx-auto"></div></div>
+                    ) : (
+                      <button onClick={handleDijaVerification} className="w-full py-4 bg-black text-white font-bold rounded-2xl shadow-lg hover:bg-gray-800 transition-all active:scale-95">Підтвердити особу</button>
+                    )}
+                  </div>
+                )}
+
+                {authStep === 4 && (
+                  <div className="text-center animate-fade-in">
+                    <div className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-inner animate-[bounce_1s_ease-in-out_1]">✓</div>
+                    <h2 className="text-xl font-black mb-6">Успішно!</h2>
+                    <button onClick={handleFinishRegister} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 hover:scale-[1.02] active:scale-95 transition-all">Увійти в профіль</button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
