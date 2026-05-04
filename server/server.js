@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
@@ -7,63 +8,75 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Збільшуємо ліміт для base64 картинок
+app.use(express.json({ limit: '50mb' })); // Для підтримки великих фото в форматі base64
 
-const JWT_SECRET = 'super_secret_animal_key_2026'; // У реальному проєкті це має бути в .env
+// Константи з файлу .env
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key_123';
+const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL;
 
-// Підключення до БД
+// Підключення до бази даних
 const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'password', // Твій пароль
-    database: 'animal_shelter'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
 // ==========================================
-// MIDDLEWARE: Перевірка авторизації
+// MIDDLEWARES (Перевірка прав)
 // ==========================================
+
+// Перевірка, чи користувач залогінений (наявність валідного токена)
 const verifyToken = (req, res, next) => {
     const token = req.headers['authorization'];
-    if (!token) return res.status(403).json({ error: 'Немає токену' });
+    if (!token) return res.status(403).json({ error: 'Немає токену. Доступ заборонено.' });
     
     jwt.verify(token.split(' ')[1], JWT_SECRET, (err, decoded) => {
-        if (err) return res.status(401).json({ error: 'Невірний токен' });
-        req.user = decoded; // зберігаємо дані юзера (id, role)
+        if (err) return res.status(401).json({ error: 'Сесія закінчилася. Увійдіть знову.' });
+        req.user = decoded; // зберігаємо дані (id, role) у запиті
         next();
     });
 };
 
-// MIDDLEWARE: Перевірка прав Адміна
+// Перевірка, чи користувач є адміном
 const isAdmin = (req, res, next) => {
     if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Доступ заборонено. Тільки для адміністраторів.' });
+        return res.status(403).json({ error: 'Ця дія доступна тільки для адміністраторів.' });
     }
     next();
 };
 
 // ==========================================
-// АВТОРИЗАЦІЯ (Реєстрація та Логін)
+// АВТОРИЗАЦІЯ
 // ==========================================
+
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { name, login, email, password, avatar } = req.body;
-        
-        // Хешуємо пароль
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
         const id = uuidv4();
-
-        // Робимо першого зареєстрованого - адміном (для тестування), інших - юзерами
-        // Або можна жорстко задати role: 'user'
-        const role = login === 'admin' ? 'admin' : 'user';
+        const role = email === SUPERADMIN_EMAIL ? 'admin' : 'user';
 
         await pool.query(
             'INSERT INTO users (id, full_name, login, email, password_hash, avatar, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [id, name, login, email, passwordHash, avatar, role]
+            [id, name, login, email, passwordHash, avatar || null, role]
         );
-        res.status(201).json({ success: true, message: 'Зареєстровано' });
+
+        // ГЕНЕРУЄМО ТОКЕН ОДРАЗУ
+        const token = jwt.sign({ id, role }, JWT_SECRET, { expiresIn: '24h' });
+
+        res.status(201).json({ 
+            success: true, 
+            token, 
+            user: { id, name, login, role, avatar } 
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Помилка реєстрації. Можливо логін чи email вже зайняті.' });
+        console.error(error);
+        res.status(500).json({ error: 'Логін або Email вже зайняті.' });
     }
 });
 
@@ -75,15 +88,64 @@ app.post('/api/auth/login', async (req, res) => {
         if (users.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
         
         const user = users[0];
-        const validPassword = await bcrypt.compare(password, user.password_hash);
+        
+        // УНІВЕРСАЛЬНА ПЕРЕВІРКА ПАРОЛЯ: шукаємо або колонку password_hash, або password
+        const dbPassword = user.password_hash || user.password;
+        
+        if (!dbPassword) {
+            return res.status(500).json({ error: 'Помилка БД: пароль користувача не знайдено або він не зашифрований.' });
+        }
+
+        const validPassword = await bcrypt.compare(password, dbPassword);
         if (!validPassword) return res.status(400).json({ error: 'Невірний пароль' });
 
-        // Створюємо токен (ключ-перепустку)
         const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
         
-        res.json({ success: true, token, user: { id: user.id, name: user.full_name, login: user.login, role: user.role, avatar: user.avatar } });
+        res.json({ 
+            success: true, 
+            token, 
+            user: { id: user.id, name: user.full_name, login: user.login, role: user.role, avatar: user.avatar } 
+        });
+    } catch (error) {
+        console.error("Помилка логіну:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==========================================
+// ПРОФІЛЬ ТА ВИДАЛЕННЯ
+// ==========================================
+
+app.get('/api/users/me', verifyToken, async (req, res) => {
+    try {
+        const [users] = await pool.query('SELECT id, full_name, login, email, role, avatar FROM users WHERE id = ?', [req.user.id]);
+        if (users.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
+        
+        const u = users[0];
+        // Перетворюємо full_name на name, щоб фронтенду було зручно
+        res.json({ 
+            user: { id: u.id, name: u.full_name, login: u.login, email: u.email, role: u.role, avatar: u.avatar } 
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/users/me', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [user] = await pool.query('SELECT email FROM users WHERE id = ?', [userId]);
+
+        // Заборона видалення головного адміна
+        if (user[0] && user[0].email === SUPERADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Суперадмін не може видалити свій акаунт.' });
+        }
+
+        // Завдяки ON DELETE CASCADE в SQL, всі пости юзера видаляться самі
+        await pool.query('DELETE FROM users WHERE id = ?', [userId]);
+        res.json({ success: true, message: 'Ваш акаунт видалено' });
+    } catch (error) {
+        res.status(500).json({ error: 'Помилка видалення.' });
     }
 });
 
@@ -91,37 +153,24 @@ app.post('/api/auth/login', async (req, res) => {
 // ПОСТИ (СТРІЧКА ДОПОМОГИ)
 // ==========================================
 
-// 1. Створити пост (Йде на модерацію 'pending')
 app.post('/api/posts', verifyToken, async (req, res) => {
     try {
         const post = req.body;
         const id = uuidv4();
-        
         await pool.query(
-            `INSERT INTO posts (
-                id, user_id, title, description, category, help_type, target_type, 
-                animal_name, animal_type, gender, breed, age, weight, height, color, health, documents, 
-                org_name, org_type, org_city, org_address, provider_name, region, 
-                requisites, keeper_phone, image, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-            [
-                id, req.user.id, post.title, post.description, post.category, post.helpType, post.targetType,
-                post.animalName, post.animalType, post.gender, post.breed, post.age, post.weight, post.height, post.color, post.health, post.documents,
-                post.orgName, post.orgType, post.orgCity, post.orgAddress, post.providerName, post.region,
-                post.requisites, post.keeperPhone, post.image
-            ]
+            `INSERT INTO posts (id, user_id, title, description, category, image, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+            [id, req.user.id, post.title, post.description, post.category, post.image]
         );
-        res.status(201).json({ success: true, message: 'Пост відправлено на перевірку адміністратору' });
+        res.status(201).json({ success: true, message: 'Відправлено на модерацію' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 2. Отримати стрічку (ТІЛЬКИ 'published' пости)
-app.get('/api/feed', async (req, res) => {
+app.get('/api/posts', async (req, res) => {
     try {
         const [posts] = await pool.query(`
-            SELECT p.*, u.full_name as authorName, u.avatar as authorAvatar, u.role as authorRole 
+            SELECT p.*, u.full_name as authorName, u.avatar as authorAvatar 
             FROM posts p 
             JOIN users u ON p.user_id = u.id 
             WHERE p.status = 'published' 
@@ -133,21 +182,11 @@ app.get('/api/feed', async (req, res) => {
     }
 });
 
-// 3. Історія постів конкретного юзера (бачить опубліковані, відхилені + коментарі адміна)
-app.get('/api/users/posts', verifyToken, async (req, res) => {
-    try {
-        const [posts] = await pool.query('SELECT * FROM posts WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
-        res.json(posts);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // ==========================================
-// ПАНЕЛЬ АДМІНІСТРАТОРА (Тільки для role: 'admin')
+// АДМІН-ПАНЕЛЬ
 // ==========================================
 
-// 1. Отримати всі пости, які чекають перевірки
+// Отримати пости, що чекають перевірки
 app.get('/api/admin/posts/pending', verifyToken, isAdmin, async (req, res) => {
     try {
         const [posts] = await pool.query('SELECT * FROM posts WHERE status = "pending" ORDER BY created_at ASC');
@@ -157,42 +196,73 @@ app.get('/api/admin/posts/pending', verifyToken, isAdmin, async (req, res) => {
     }
 });
 
-// 2. Підтвердити пост
-app.put('/api/admin/posts/:postId/approve', verifyToken, isAdmin, async (req, res) => {
+// Схвалити пост
+app.put('/api/admin/posts/:id/approve', verifyToken, isAdmin, async (req, res) => {
     try {
-        await pool.query('UPDATE posts SET status = "published", admin_comment = NULL WHERE id = ?', [req.params.postId]);
-        res.json({ success: true, message: 'Пост успішно опубліковано' });
+        await pool.query('UPDATE posts SET status = "published" WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 3. Відхилити пост з поясненням (коментарем)
-app.put('/api/admin/posts/:postId/reject', verifyToken, isAdmin, async (req, res) => {
+// Відхилити пост
+app.put('/api/admin/posts/:id/reject', verifyToken, isAdmin, async (req, res) => {
     try {
-        const { adminComment } = req.body;
-        await pool.query('UPDATE posts SET status = "rejected", admin_comment = ? WHERE id = ?', [adminComment, req.params.postId]);
-        res.json({ success: true, message: 'Пост відхилено. Користувач побачить причину.' });
+        const { reason } = req.body;
+        await pool.query('UPDATE posts SET status = "rejected", admin_comment = ? WHERE id = ?', [reason, req.params.id]);
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Змінити роль користувача
+app.put('/api/admin/users/set-role', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const { userId, newRole } = req.body;
+        const [target] = await pool.query('SELECT email FROM users WHERE id = ?', [userId]);
+
+        if (target[0] && target[0].email === SUPERADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Права суперадміна змінити неможливо.' });
+        }
+
+        await pool.query('UPDATE users SET role = ? WHERE id = ?', [newRole, userId]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: 'Помилка зміни ролі.' });
     }
 });
 
 // ==========================================
-// ІСТОРІЯ ДОНАТІВ ТА ПІДПИСОК
+// ФІНАНСИ
 // ==========================================
 app.get('/api/users/finances', verifyToken, async (req, res) => {
     try {
-        const [donations] = await pool.query('SELECT * FROM donations WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
-        const [subscriptions] = await pool.query('SELECT * FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
-        
+        const [donations] = await pool.query('SELECT * FROM donations WHERE user_id = ?', [req.user.id]);
+        const [subscriptions] = await pool.query('SELECT * FROM subscriptions WHERE user_id = ?', [req.user.id]);
         res.json({ donations, subscriptions });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
+// Отримати всіх користувачів (для чатів)
+app.get('/api/users', verifyToken, async (req, res) => {
+    try {
+        // Вибираємо всіх, крім себе
+        const [users] = await pool.query(
+            'SELECT id, full_name as name, login, avatar, role FROM users WHERE id != ?', 
+            [req.user.id]
+        );
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ЗАПУСК
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Сервер AnimalShelter запущено на порту ${PORT}`);
 });

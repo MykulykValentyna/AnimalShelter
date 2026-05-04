@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:3000/api";
+const API_URL = "http://localhost:5000/api";
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -9,6 +9,7 @@ const apiClient = axios.create({
   },
 });
 
+// Перехоплювач запитів: автоматично додаємо токен з пам'яті
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -17,11 +18,10 @@ apiClient.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
+// Перехоплювач відповідей: якщо сервер каже, що ми не авторизовані
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {

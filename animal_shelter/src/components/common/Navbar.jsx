@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser, register, login, logout, checkLoginExists, checkEmailExists } = useAuth(); 
+  const { currentUser, register, login, logout } = useAuth(); 
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('login'); 
@@ -60,13 +60,16 @@ const Navbar = () => {
     setShowRegConfirmPwd(false);
   };
 
-  const handleLoginSubmit = (e) => {
+  // ДОДАНО async/await для логіну
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    const result = login(loginData.identifier, loginData.password);
+    const result = await login(loginData.identifier, loginData.password);
     if (result.success) {
       handleCloseModal(); 
       navigate(ROUTES.PROFILE); 
-    } else setErrorMsg(result.message);
+    } else {
+      setErrorMsg(result.message);
+    }
   };
 
   const handleChange = (e) => { setFormData({ ...formData, [e.target.name]: e.target.value }); setErrorMsg(''); };
@@ -82,8 +85,7 @@ const Navbar = () => {
   const handleNextStep = (e) => {
     e.preventDefault();
     if (authStep === 1) {
-      if (checkLoginExists(formData.login)) return setErrorMsg('Цей логін вже зайнятий. Будь ласка, оберіть інший!');
-      if (checkEmailExists(formData.email)) return setErrorMsg('Користувач із цією поштою вже зареєстрований!');
+      // ПРИБРАНО старі перевірки checkLoginExists та checkEmailExists
       if (formData.password !== formData.confirmPassword) return setErrorMsg('Паролі не збігаються! Перевірте введені дані.');
       formData.role === 'user' ? setAuthStep(3) : setAuthStep(2);
     } else if (authStep === 2) setAuthStep(3);
@@ -94,10 +96,16 @@ const Navbar = () => {
     setTimeout(() => { setIsVerifying(false); setVerificationResult('success'); setAuthStep(4); }, 2000);
   };
 
-  const handleFinishRegister = () => {
-    const result = register(formData);
-    if (result.success) { handleCloseModal(); navigate(ROUTES.PROFILE); } 
-    else { setAuthStep(1); setErrorMsg(result.message); }
+  // ДОДАНО async/await для реєстрації
+  const handleFinishRegister = async () => {
+    const result = await register(formData);
+    if (result.success) { 
+      handleCloseModal(); 
+      navigate(ROUTES.PROFILE); 
+    } else { 
+      setAuthStep(1); // Повертаємо на перший крок, якщо логін/пошта зайняті
+      setErrorMsg(result.message); 
+    }
   };
 
   const EyeIcon = () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>;
@@ -131,7 +139,7 @@ const Navbar = () => {
                      {currentUser.avatar ? (
                         <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
                       ) : (
-                        currentUser.name.charAt(0)
+                        (currentUser.name || currentUser.full_name || 'U').charAt(0)
                       )}
                    </div>
                    <div className="flex flex-col">

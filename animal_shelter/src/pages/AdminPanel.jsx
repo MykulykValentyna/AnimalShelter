@@ -1,140 +1,178 @@
 import React, { useState, useEffect } from 'react';
+// import { adminService } from '../services/postService'; // Тимчасово закоментовано для фронтенд-демо
+
+// === ФЕЙКОВІ ДАНІ (Mock Data) ===
+const fakePendingPosts = [
+  {
+    id: 'pend_1',
+    type: 'looking_for_home',
+    authorName: 'Анна (Волонтер)',
+    createdAt: new Date(Date.now() - 3600000).toISOString(), // Годину тому
+    title: 'Знайшли двох маленьких цуценят',
+    content: 'Хтось залишив коробку з двома цуценятами біля магазину. Хлопчик і дівчинка, на вигляд місяць-півтора. Віддамо тільки в надійні руки, не на ланцюг.',
+    image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'pend_2',
+    type: 'need_financial',
+    authorName: 'Притулок "Сірко"',
+    createdAt: new Date(Date.now() - 7200000).toISOString(), // 2 години тому
+    title: 'Потрібна допомога з оплатою оренди!',
+    content: 'Наш притулок опинився під загрозою виселення. До кінця місяця потрібно зібрати 15 000 грн за оренду території. Якщо ми не зберемо кошти, 40 собак опиняться на вулиці. Просимо вашої допомоги!',
+    image: 'https://images.unsplash.com/photo-1535090467336-9501f96eef89?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'pend_3',
+    type: 'offer_physical',
+    authorName: 'Олександр',
+    createdAt: new Date(Date.now() - 86400000).toISOString(), // Вчора
+    title: 'Можу зробити будки для собак',
+    content: 'Маю залишки дощок після будівництва та вільний час на вихідних. Можу безкоштовно збити 3-4 утеплені будки для середніх собак. Тільки самовивіз із Броварів.',
+    image: 'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
+  }
+];
 
 const AdminPanel = () => {
   const [pendingPosts, setPendingPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0 });
+  const [rejectReason, setRejectReason] = useState({}); // Для збереження тексту причини для кожного поста
 
   useEffect(() => {
-    const fetchAdminData = () => {
-      setIsLoading(true);
-      setTimeout(() => {
-        const mockPending = [
-          {
-            id: 'post-101',
-            title: 'Збір на операцію для врятованого пса',
-            authorName: 'Волонтер Анна',
-            content: 'Терміново потрібні кошти на операцію після ДТП. Клініка виставила рахунок на 15 000 грн.',
-            type: 'financial_help_animal',
-            createdAt: new Date().toISOString()
-          },
-          {
-            id: 'post-102',
-            title: 'Харчування для кошенят з гаражів',
-            authorName: 'Микола І.',
-            content: 'Знайшли 5 кошенят, потрібна допомога з покупкою замінника котячого молока.',
-            type: 'financial_help_animal',
-            createdAt: new Date(Date.now() - 3600000).toISOString()
-          }
-        ];
-        setPendingPosts(mockPending);
-        setStats({ total: 124, verified: 89, pending: mockPending.length });
-        setIsLoading(false);
-      }, 700);
-    };
-    fetchAdminData();
+    fetchPending();
   }, []);
 
-  const handleAction = (id, action) => {
-    setPendingPosts(pendingPosts.filter(post => post.id !== id));
-    setStats(prev => ({
-      ...prev,
-      pending: prev.pending - 1,
-      verified: action === 'approve' ? prev.verified + 1 : prev.verified
-    }));
+  const fetchPending = async () => {
+    setIsLoading(true);
+    try {
+      // --- ДЛЯ ГОТОВОГО БЕКЕНДУ РОЗКОМЕНТУЙ ЦЕ: ---
+      // const data = await adminService.getPendingPosts();
+      // setPendingPosts(Array.isArray(data) ? data : (data.posts || []));
+
+      // --- ЗАГЛУШКА (Фейкові дані) ---
+      setTimeout(() => {
+        setPendingPosts(fakePendingPosts);
+        setIsLoading(false);
+      }, 800);
+    } catch (err) {
+      console.error("Доступ заборонено або помилка сервера");
+      setIsLoading(false);
+    }
   };
 
+  const handleApprove = async (id) => {
+    if (!window.confirm("Опублікувати цей пост?")) return;
+    try {
+      // Імітація запиту на сервер
+      // await adminService.approvePost(id);
+      
+      // Видаляємо схвалений пост зі списку
+      setPendingPosts(prev => prev.filter(post => post.id !== id));
+      alert("Пост успішно опубліковано!");
+    } catch (err) { 
+      alert("Помилка при схваленні"); 
+    }
+  };
+
+  const handleReject = async (id) => {
+    const reason = rejectReason[id];
+    if (!reason || reason.length < 5) {
+      alert("Вкажіть причину відхилення (мінімум 5 символів)");
+      return;
+    }
+    try {
+      // Імітація запиту на сервер
+      // await adminService.rejectPost(id, reason);
+      
+      // Видаляємо відхилений пост зі списку
+      setPendingPosts(prev => prev.filter(post => post.id !== id));
+      alert("Пост відхилено. Автору надіслано повідомлення.");
+    } catch (err) { 
+      alert("Помилка при відхиленні"); 
+    }
+  };
+
+  const badgeLabels = {
+    'looking_for_home': 'Шукає дім',
+    'need_financial': 'Потрібна фін. допомога',
+    'need_physical': 'Потрібна фіз. допомога',
+    'offer_financial': 'Пропоную фін. допомогу',
+    'offer_physical': 'Пропоную фіз. допомогу',
+  };
+
+  if (isLoading) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-12 h-12 border-4 border-rose-200 border-t-rose-500 rounded-full animate-spin"></div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50/50 pt-12 pb-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+    <div className="min-h-screen bg-slate-50 pt-10 pb-24 px-4 text-slate-900 font-sans">
+      <div className="max-w-5xl mx-auto">
+        <header className="mb-10 flex items-center justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-rose-100 shadow-sm mb-4">
-              <span className="text-xl">🛡️</span>
-              <span className="text-sm font-bold text-gray-700 uppercase tracking-wider">Панель модератора</span>
-            </div>
-            <h1 className="text-4xl font-black text-gray-900 tracking-tight">Керування контентом</h1>
+            <h1 className="text-4xl font-black tracking-tight">Панель модерації</h1>
+            <p className="text-slate-500 font-medium">У черзі на перевірку: {pendingPosts.length} постів</p>
           </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: 'Усього', val: stats.total, color: 'text-gray-900' },
-              { label: 'Схвалено', val: stats.verified, color: 'text-emerald-500' },
-              { label: 'Черга', val: stats.pending, color: 'text-rose-500' }
-            ].map((stat, i) => (
-              <div key={i} className="bg-white px-5 py-3 rounded-2xl border border-rose-100 shadow-sm text-center">
-                <div className={`text-xl font-black ${stat.color}`}>{stat.val}</div>
-                <div className="text-[10px] uppercase font-bold text-gray-400 tracking-tighter">{stat.label}</div>
-              </div>
-            ))}
+          <div className="bg-rose-500 text-white px-4 py-2 rounded-2xl font-bold text-sm shadow-lg shadow-rose-200">
+            Admin Mode
           </div>
-        </div>
+        </header>
 
-        <div className="bg-white rounded-[2.5rem] border border-rose-100 shadow-xl shadow-rose-100/20 overflow-hidden">
-          <div className="px-8 py-6 border-b border-rose-50 flex justify-between items-center bg-gray-50/30">
-            <h2 className="text-xl font-bold text-gray-800">Запити на фінансову допомогу</h2>
-            <span className="bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest">
-              Потребують уваги
-            </span>
-          </div>
+        <div className="space-y-6">
+          {pendingPosts.length > 0 ? (
+            pendingPosts.map(post => (
+              <div key={post.id} className="bg-white rounded-[2rem] border border-slate-200 shadow-xl shadow-slate-100/50 overflow-hidden flex flex-col md:flex-row">
+                
+                {/* Мініатюра фото */}
+                <div className="w-full md:w-64 bg-slate-100 relative shrink-0">
+                  <img src={post.image || 'https://via.placeholder.com/400'} className="w-full h-full object-cover" alt="Preview" />
+                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-black uppercase text-slate-700 shadow-sm border border-slate-100">
+                    {badgeLabels[post.type] || post.type}
+                  </div>
+                </div>
 
-          <div className="divide-y divide-rose-50">
-            {isLoading ? (
-              [1, 2].map(n => <div key={n} className="h-40 animate-pulse bg-gray-50/50"></div>)
-            ) : pendingPosts.length > 0 ? (
-              pendingPosts.map((post) => (
-                <div key={post.id} className="p-8 hover:bg-rose-50/20 transition-colors">
-                  <div className="flex flex-col lg:flex-row gap-8 justify-between">
-                    <div className="flex-1 space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center font-bold text-rose-600 border border-white">
-                          {post.authorName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="text-sm font-black text-gray-900 leading-none">{post.authorName}</p>
-                          <p className="text-xs text-gray-400 mt-1">Сьогодні, о 14:20</p>
-                        </div>
-                      </div>
-                      <h3 className="text-xl font-bold text-gray-900 leading-tight">{post.title}</h3>
-                      <p className="text-gray-600 leading-relaxed text-sm">{post.content}</p>
-                    </div>
+                {/* Текст поста */}
+                <div className="p-8 flex-1 flex flex-col">
+                  <div className="mb-4">
+                    <span className="text-xs font-bold text-slate-400">Автор: {post.authorName} • {new Date(post.createdAt).toLocaleDateString('uk-UA')}</span>
+                    <h2 className="text-2xl font-black mt-2 text-slate-900 leading-tight">{post.title}</h2>
+                    <p className="text-slate-600 text-sm mt-3 line-clamp-3 leading-relaxed">"{post.content}"</p>
+                  </div>
 
-                    <div className="flex lg:flex-col gap-3 shrink-0 justify-end">
+                  {/* Блок управління */}
+                  <div className="mt-auto border-t border-slate-100 pt-6 flex flex-col gap-4">
+                    <input 
+                      type="text" 
+                      placeholder="Причина відхилення (обов'язково, якщо відхиляєте)..." 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 transition-all font-medium placeholder-slate-400"
+                      onChange={(e) => setRejectReason({...rejectReason, [post.id]: e.target.value})}
+                    />
+                    <div className="flex flex-col sm:flex-row gap-3">
                       <button 
-                        onClick={() => handleAction(post.id, 'approve')}
-                        className="flex-1 lg:w-40 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                        onClick={() => handleApprove(post.id)}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm py-3.5 rounded-xl transition-all shadow-md shadow-emerald-200 active:scale-95 flex items-center justify-center gap-2"
                       >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Схвалити
+                        <span className="text-lg">✅</span> Схвалити та опублікувати
                       </button>
                       <button 
-                        onClick={() => handleAction(post.id, 'reject')}
-                        className="flex-1 lg:w-40 py-3 bg-white text-rose-500 border-2 border-rose-100 hover:border-rose-300 font-bold rounded-2xl transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                        onClick={() => handleReject(post.id)}
+                        className="flex-1 bg-white hover:bg-red-50 text-red-500 font-bold text-sm py-3.5 rounded-xl transition-all border border-red-200 active:scale-95 flex items-center justify-center gap-2"
                       >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Відхилити
+                        <span className="text-lg">❌</span> Відхилити пост
                       </button>
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="p-20 text-center">
-                <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <span className="text-4xl">✅</span>
-                </div>
-                <h3 className="text-2xl font-black text-gray-900 mb-2">Черга порожня</h3>
-                <p className="text-gray-500">Всі публікації опрацьовано. Гарна робота!</p>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="text-center py-20 bg-white rounded-[3rem] border border-dashed border-slate-300 shadow-sm animate-fade-in">
+              <span className="text-6xl mb-4 block opacity-50">☕</span>
+              <h3 className="text-2xl font-black text-slate-800 mb-2">Черга порожня!</h3>
+              <p className="text-slate-500 font-medium">Всі пости перевірено. Можна випити кави та відпочити.</p>
+            </div>
+          )}
         </div>
-
       </div>
     </div>
   );

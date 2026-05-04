@@ -2,8 +2,21 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 const PostCard = ({ post }) => {
-  const { id, title, content, type, status, createdAt, authorName } = post;
+  // Дістаємо всі необхідні дані з об'єкта post, який приходить з бекенду
+  const { 
+    id, 
+    title, 
+    content, 
+    type, 
+    authorName, 
+    authorId, 
+    image, 
+    likesCount, 
+    commentsCount, 
+    createdAt 
+  } = post;
 
+  // Форматування дати у зручний український формат
   const formattedDate = new Intl.DateTimeFormat('uk-UA', {
     day: 'numeric',
     month: 'long',
@@ -11,83 +24,100 @@ const PostCard = ({ post }) => {
     minute: '2-digit'
   }).format(new Date(createdAt || Date.now()));
 
-  const getTypeLabel = (postType) => {
+  // Функція для визначення тексту та кольору бейджа залежно від типу поста
+  const getTypeStyle = (postType) => {
     switch (postType) {
-      case 'financial_help_animal': return 'Фінансова допомога';
-      case 'looking_for_home': return 'Шукає дім';
-      case 'offer_help': return 'Пропоную допомогу';
-      default: return 'Допомога';
+      case 'need_financial': return { text: 'Терміновий збір', style: 'bg-rose-500 text-white' };
+      case 'need_physical': return { text: 'Потрібні руки', style: 'bg-orange-500 text-white' };
+      case 'offer_financial': return { text: 'Пропоную кошти', style: 'bg-emerald-500 text-white' };
+      case 'offer_physical': return { text: 'Пропоную допомогу', style: 'bg-teal-500 text-white' };
+      case 'looking_for_home': return { text: 'Шукає дім', style: 'bg-purple-500 text-white' }; // Новий тип для тваринок!
+      default: return { text: 'Допомога', style: 'bg-slate-500 text-white' };
     }
   };
 
-  const getTypeStyles = (postType) => {
-    switch (postType) {
-      case 'financial_help_animal': 
-        return 'bg-rose-50 text-rose-600 border-rose-100';
-      case 'looking_for_home': 
-        return 'bg-purple-50 text-purple-600 border-purple-100';
-      case 'offer_help': 
-        return 'bg-emerald-50 text-emerald-600 border-emerald-100';
-      default: 
-        return 'bg-gray-50 text-gray-600 border-gray-100';
-    }
-  };
+  const badge = getTypeStyle(type);
 
   return (
-    <div className="group bg-white rounded-3xl p-6 border border-rose-100 shadow-sm hover:shadow-xl transition-all duration-300 relative overflow-hidden">
-      {status === 'pending_admin_approval' && (
-        <div className="absolute top-0 right-0 bg-amber-100 text-amber-700 text-xs font-bold px-4 py-1.5 rounded-bl-2xl">
-          На модерації
-        </div>
-      )}
+    <div className="group bg-white rounded-[2rem] border border-slate-200 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col h-full relative">
       
-      <div className="flex items-center gap-4 mb-5">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-rose-200 to-purple-200 flex items-center justify-center shadow-sm">
-          <span className="text-xl">🌸</span>
-        </div>
-        <div>
-          <h4 className="font-bold text-gray-900">{authorName || 'Небайдужий користувач'}</h4>
-          <span className="text-xs text-gray-500">{formattedDate}</span>
+      {/* --- БЛОК З ФОТОГРАФІЄЮ --- */}
+      <div className="relative h-56 w-full overflow-hidden bg-slate-100">
+        <img 
+          src={image || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800'} 
+          alt={title} 
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+        />
+        {/* Затемнення знизу для гарного контрасту */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none"></div>
+        
+        {/* Бейдж статусу */}
+        <div className={`absolute top-4 right-4 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg ${badge.style}`}>
+          {badge.text}
         </div>
       </div>
 
-      <div className="mb-4">
-        <span className={`inline-block px-3 py-1 mb-3 text-xs font-bold uppercase tracking-wider rounded-xl border ${getTypeStyles(type)}`}>
-          {getTypeLabel(type)}
-        </span>
-        <h3 className="text-xl font-bold text-gray-900 mb-2 leading-tight">
+      <div className="p-6 flex-1 flex flex-col relative bg-white">
+        
+        {/* --- АВАТАРКА АВТОРА --- */}
+        <div className="absolute -top-10 left-6 z-20">
+          <Link 
+            to={`/profile/${authorId}`}
+            className="block w-16 h-16 rounded-full bg-white p-1 shadow-lg hover:scale-110 transition-transform"
+          >
+            <div className="w-full h-full rounded-full bg-gradient-to-tr from-rose-200 to-purple-200 flex items-center justify-center text-xl font-black text-slate-800">
+              {authorName?.charAt(0) || '👤'}
+            </div>
+          </Link>
+        </div>
+
+        {/* --- ІНФОРМАЦІЯ ПРО АВТОРА --- */}
+        <div className="ml-20 mb-4 h-10 flex flex-col justify-end relative z-10">
+          <Link 
+            to={`/profile/${authorId}`}
+            className="font-bold text-slate-900 leading-none mb-1 hover:text-rose-500 transition-colors inline-block w-max"
+          >
+            {authorName || 'Користувач'}
+          </Link>
+          <span className="text-xs text-slate-500 font-medium">{formattedDate}</span>
+        </div>
+        
+        {/* --- КОНТЕНТ ПОСТА --- */}
+        <h3 className="text-xl font-black text-slate-900 mb-3 line-clamp-2 leading-tight">
           {title}
         </h3>
-        <p className="text-gray-600 line-clamp-3 leading-relaxed">
+        <p className="text-slate-600 text-sm line-clamp-3 mb-6 flex-1 font-medium leading-relaxed whitespace-pre-wrap">
           {content}
         </p>
-      </div>
 
-      <div className="pt-4 mt-4 border-t border-rose-50 flex items-center justify-between">
-        <div className="flex items-center gap-4 text-gray-500">
-          <button className="flex items-center gap-1.5 hover:text-rose-500 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-            </svg>
-            <span className="text-sm font-medium">Підтримати</span>
-          </button>
-          <div className="flex items-center gap-1.5 hover:text-purple-500 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <span className="text-sm font-medium">Коментарі</span>
+        {/* --- СТАТИСТИКА ТА КНОПКИ --- */}
+        <div className="mt-auto pt-4 border-t border-slate-100 flex flex-col gap-4 relative z-10">
+          
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-sm text-slate-500 font-bold">
+              <span className="text-lg">❤️</span> {likesCount || 0}
+            </div>
+            <div className="flex items-center gap-1.5 text-sm text-slate-500 font-bold">
+              <span className="text-lg">💬</span> {commentsCount || 0}
+            </div>
           </div>
-        </div>
 
-        <Link 
-          to={`/posts/${id}`}
-          className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-purple-600 hover:opacity-80 transition-opacity flex items-center gap-1"
-        >
-          Читати далі
-          <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
+          <div className="flex gap-3 w-full">
+            <Link 
+              to={`/messages/${authorId}`}
+              className="flex-1 py-3 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 border border-rose-100"
+            >
+              ✉️ Написати
+            </Link>
+            <Link 
+              to={`/posts/${id}`}
+              className="flex-1 py-3 px-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-colors shadow-md flex items-center justify-center"
+            >
+              Читати далі
+            </Link>
+          </div>
+
+        </div>
       </div>
     </div>
   );

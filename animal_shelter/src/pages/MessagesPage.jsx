@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ROUTES } from '../utils/constants';
+import apiClient from '../services/apiClient'; // <--- ДОДАНО: Перевір шлях до файлу apiClient!
 
 // --- КОМПОНЕНТ СПИСКУ ЧАТІВ ---
 const ChatList = ({ chats = [], onSelectChat, activeChatId, onOpenSearch }) => {
@@ -57,7 +58,6 @@ const ChatList = ({ chats = [], onSelectChat, activeChatId, onOpenSearch }) => {
                   }`}
                 >
                   <div className="relative shrink-0">
-                    {/* Аватарка */}
                     <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-rose-200 to-purple-200 flex items-center justify-center shadow-sm border-2 border-white transition-transform group-hover:scale-105 overflow-hidden">
                       {chat.contactAvatar ? (
                         <img src={chat.contactAvatar} alt="avatar" className="w-full h-full object-cover" />
@@ -82,7 +82,6 @@ const ChatList = ({ chats = [], onSelectChat, activeChatId, onOpenSearch }) => {
                         {chat.lastMessage || 'Немає повідомлень'}
                       </p>
                       
-                      {/* ІНДИКАТОР СПОВІЩЕНЬ */}
                       {chat.unreadCount > 0 && (
                         <span className="shrink-0 bg-gradient-to-r from-rose-500 to-purple-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-lg shadow-rose-200 min-w-[20px] text-center">
                           {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
@@ -154,7 +153,6 @@ const ChatWindow = ({ chat, currentUser, onSendMessage, onDeleteChat }) => {
     <div className="w-full h-full flex flex-col bg-white/90 backdrop-blur-md rounded-3xl border border-rose-100 shadow-2xl overflow-hidden relative">
       <div className="px-6 py-4 border-b border-rose-100 bg-white/50 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-4">
-          {/* Аватарка в шапці вікна */}
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-200 to-purple-200 flex items-center justify-center shadow-sm border-2 border-white overflow-hidden">
             {chat.contactAvatar ? (
               <img src={chat.contactAvatar} alt="avatar" className="w-full h-full object-cover" />
@@ -238,6 +236,9 @@ const MessagesPage = () => {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   
+  // ДОДАНО: Стан для зберігання користувачів з бази даних
+  const [allDbUsers, setAllDbUsers] = useState([]);
+  
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [foundUsers, setFoundUsers] = useState([]);
@@ -247,44 +248,59 @@ const MessagesPage = () => {
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
+  // ДОДАНО: Завантажуємо користувачів з MySQL при старті
   useEffect(() => {
     if (!currentUser) {
       navigate(ROUTES.HOME);
       return;
     }
-    loadChats();
+
+    const fetchInitialData = async () => {
+      try {
+        const response = await apiClient.get('/users');
+        setAllDbUsers(response.data);
+      } catch (error) {
+        console.error("Помилка завантаження користувачів:", error);
+      }
+    };
+
+    fetchInitialData();
   }, [currentUser, navigate]);
+
+  // Оновлюємо список чатів, коли змінюються користувачі в базі (щоб підтягнути аватарки)
+  useEffect(() => {
+    if (currentUser) {
+      loadChats();
+    }
+  }, [currentUser, allDbUsers]);
 
   const loadChats = () => {
     const allChats = JSON.parse(localStorage.getItem('app_chats') || '[]');
-    const allUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    
     const myChats = allChats.filter(chat => chat.participants.some(p => p.login === currentUser.login));
     
     const formattedChats = myChats.map(chat => {
       const contact = chat.participants.find(p => p.login !== currentUser.login);
-      // Шукаємо користувача в базі, щоб підтягнути його свіжу аватарку
-      const contactUser = allUsers.find(u => u.login === contact.login) || {};
+      
+      // ВИПРАВЛЕНО: Шукаємо аватарки у справжній базі, а не в localStorage
+      const contactUser = allDbUsers.find(u => u.login === contact.login) || {};
       const lastMsg = chat.messages[chat.messages.length - 1];
       
-      // РАХУЄМО НЕПРОЧИТАНІ: відправник НЕ я, і status read = false
       const unreadCount = chat.messages.filter(m => m.senderLogin !== currentUser.login && !m.read).length;
 
       return {
         ...chat,
         contactName: contactUser.name || contact.name,
         contactLogin: contact.login,
-        contactAvatar: contactUser.avatar || null, // Додаємо аватарку
+        contactAvatar: contactUser.avatar || null,
         lastMessage: lastMsg ? lastMsg.text : '',
         lastMessageTime: lastMsg ? lastMsg.timestamp : chat.createdAt,
-        unreadCount: unreadCount // Додаємо лічильник
+        unreadCount: unreadCount
       };
     }).sort((a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime));
 
     setChats(formattedChats);
   };
 
-  // Коли ми вибираємо чат, ми позначаємо всі повідомлення в ньому як "ПРОЧИТАНІ"
   const selectChat = (chat) => {
     setActiveChatId(chat.id);
     
@@ -295,13 +311,13 @@ const MessagesPage = () => {
       let changed = false;
       allChats[chatIndex].messages.forEach(m => {
         if (m.senderLogin !== currentUser.login && !m.read) {
-          m.read = true; // Відмічаємо як прочитане
+          m.read = true; 
           changed = true;
         }
       });
       if (changed) {
         localStorage.setItem('app_chats', JSON.stringify(allChats));
-        loadChats(); // Оновлюємо список чатів, щоб бейдж зник
+        loadChats(); 
       }
     }
   };
@@ -309,10 +325,14 @@ const MessagesPage = () => {
   const handleSearch = (query) => {
     setSearchQuery(query);
     if (query.length < 2) { setFoundUsers([]); return; }
-    const allUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    const results = allUsers.filter(u => 
+    
+    // ВИПРАВЛЕНО: Шукаємо у справжній базі (allDbUsers), а не в порожньому localStorage
+    const results = allDbUsers.filter(u => 
       u.login !== currentUser.login && 
-      (u.name.toLowerCase().includes(query.toLowerCase()) || u.login.toLowerCase().includes(query.toLowerCase()))
+      (
+        (u.name && u.name.toLowerCase().includes(query.toLowerCase())) || 
+        (u.login && u.login.toLowerCase().includes(query.toLowerCase()))
+      )
     );
     setFoundUsers(results);
   };
@@ -355,7 +375,7 @@ const MessagesPage = () => {
         senderLogin: currentUser.login,
         text: text,
         timestamp: new Date().toISOString(),
-        read: false // Нове повідомлення завжди "не прочитане"
+        read: false 
       };
       allChats[chatIndex].messages.push(newMessage);
       localStorage.setItem('app_chats', JSON.stringify(allChats));
@@ -384,7 +404,7 @@ const MessagesPage = () => {
         <ChatList 
           chats={chats} 
           activeChatId={activeChatId} 
-          onSelectChat={selectChat} // Використовуємо нову функцію
+          onSelectChat={selectChat} 
           onOpenSearch={() => setIsSearchOpen(true)}
         />
       </div>
@@ -410,7 +430,7 @@ const MessagesPage = () => {
                 foundUsers.map(user => (
                   <button key={user.login} onClick={() => createChat(user)} className="w-full flex items-center gap-3 p-3 hover:bg-rose-50 rounded-xl transition-colors text-left group border border-transparent hover:border-rose-100">
                     <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center font-bold overflow-hidden">
-                      {user.avatar ? <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" /> : user.name.charAt(0)}
+                      {user.avatar ? <img src={user.avatar} alt="avatar" className="w-full h-full object-cover" /> : user.name?.charAt(0) || 'U'}
                     </div>
                     <div>
                       <p className="font-bold text-gray-900 text-sm group-hover:text-rose-600">{user.name}</p>

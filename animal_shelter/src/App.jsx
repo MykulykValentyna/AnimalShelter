@@ -3,9 +3,13 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 
+// Компоненти
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
+import AdminRoute from './components/common/AdminRoute.jsx'; // <-- Імпорт захисту адмінки
 
+// Сторінки
+import AdminPanel from './pages/AdminPanel';
 import MapPage from './pages/MapPage';
 import Home from './pages/Home';
 import AnimalsPage from './pages/AnimalsPage';
@@ -16,14 +20,13 @@ import DonatePage from './pages/DonatePage';
 import RulesPage from './pages/RulesPage';
 import ContactPage from './pages/ContactPage';
 import ProfilePage from './pages/ProfilePage';
+import PostDetails from './pages/PostDetails';
 
 import { ROUTES } from './utils/constants';
 
-// Компонент, який ховає футер там, де він не потрібен
 const ConditionalFooter = () => {
   const location = useLocation();
   
-  // Ховаємо футер на сторінці Профілю, Чатів ТА на сторінці конкретної тваринки
   if (
     location.pathname === ROUTES.PROFILE || 
     location.pathname === ROUTES.MESSAGES ||
@@ -44,6 +47,17 @@ const App = () => {
             
             <main className="flex-grow">
               <Routes>
+                {/* ЗАХИЩЕНИЙ МАРШРУТ АДМІНА */}
+                <Route 
+                  path="/admin" 
+                  element={
+                    <AdminRoute>
+                      <AdminPanel />
+                    </AdminRoute>
+                  } 
+                />
+                
+                {/* ОСНОВНІ МАРШРУТИ */}
                 <Route path={ROUTES.HOME} element={<Home />} />
                 <Route path={ROUTES.MAP} element={<MapPage />} />
                 <Route path={ROUTES.ANIMALS} element={<AnimalsPage />} />
@@ -54,6 +68,11 @@ const App = () => {
                 <Route path={ROUTES.RULES} element={<RulesPage />} />
                 <Route path={ROUTES.CONTACT} element={<ContactPage />} />
                 <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
+                
+                {/* МАРШРУТИ З ПАРАМЕТРАМИ (ДЕТАЛІ) */}
+                <Route path="/posts/:id" element={<PostDetails />} />
+                <Route path="/profile/:id" element={<ProfilePage />} />
+                <Route path="/messages/:id" element={<MessagesPage />} />
               </Routes>
             </main>
 
